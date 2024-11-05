@@ -99,9 +99,11 @@ def process_image_with_photoroom(uploaded_file, api_params, output_format="jpeg"
         return None
 
 # Function to resize images and adjust file size
+from PIL import Image
+from io import BytesIO
+
 def resize_image(uploaded_file, target_width, target_height, output_format, padding_color=(255, 255, 255)):
     with Image.open(uploaded_file) as img:
-        # Calculate the aspect ratio-preserving dimensions
         original_width, original_height = img.size
         ratio = min(target_width / original_width, target_height / original_height)
         new_width = int(original_width * ratio)
@@ -110,30 +112,43 @@ def resize_image(uploaded_file, target_width, target_height, output_format, padd
         # Resize the image while preserving aspect ratio
         resized_img = img.resize((new_width, new_height), Image.LANCZOS)
 
-        # Create a new image with the target dimensions and background color
-        final_img = Image.new("RGB", (target_width, target_height), padding_color)
+        # Always create an RGBA image with the desired background color and target dimensions
+        final_img = Image.new("RGBA", (target_width, target_height), (*padding_color, 255))
+        
+        # Paste the resized image onto the new background with alpha mask (if any)
+        final_img.paste(resized_img, ((target_width - new_width) // 2, (target_height - new_height) // 2), mask=resized_img if resized_img.mode == "RGBA" else None)
 
-        # Paste the resized image onto the center of the new image
-        top_left_x = (target_width - new_width) // 2
-        top_left_y = (target_height - new_height) // 2
-        final_img.paste(resized_img, (top_left_x, top_left_y))
-
-        # Convert RGBA to RGB if necessary for JPEG output
-        if output_format.lower() == "jpeg" and final_img.mode == "RGBA":
+        # Convert to RGB if output is JPEG or any format that does not support alpha
+        if output_format.lower() in ["jpeg", "jpg"]:
             final_img = final_img.convert("RGB")
 
         # Save with quality adjustments to fit within 70KB to 200KB range
         img_byte_arr = BytesIO()
-        quality = 85  # Start with a high quality
-        step = -5  # Decrease in quality steps
+        quality = 85  # Start with high quality
+        step = -5  # Step to decrease quality if file size is too large
         while True:
-            img_byte_arr.seek(0)
-            final_img.save(img_byte_arr, format=output_format.upper(), quality=quality, optimize=True)
-            file_size = img_byte_arr.tell() / 1024  # Size in KB
+            img_byte_arr = BytesIO()
+            # Save the image with the current quality level
+            if output_format.lower() == "webp":
+                final_img.save(img_byte_arr, format="WEBP", quality=quality)
+            elif output_format.lower() in ["jpeg", "jpg"]:
+                final_img.save(img_byte_arr, format="JPEG", quality=quality, optimize=True)
+            else:
+                # For PNG, try reducing to 256 colors (PNG8)
+                temp_img = final_img.convert("P", palette=Image.ADAPTIVE, colors=256)
+                temp_img.save(img_byte_arr, format="PNG", optimize=True)
+
+            # Use len() to get the actual file size with metadata
+            file_size = len(img_byte_arr.getvalue()) / 1024  # Size in KB, including metadata
+            print(f"File size with metadata: {file_size} KB at quality {quality}")
+
+
             if file_size <= 200 or quality <= 5:
                 break
             quality += step
+            
         return img_byte_arr.getvalue()
+
 
 
 
@@ -191,14 +206,14 @@ if process_button:
 
 # Section 2: Image Resizing
 st.header("• Redimensionnement d'images")
-uploaded_resize_files = st.file_uploader("Glissez-déposez des images pour les redimensionner", accept_multiple_files=True, type=["png", "jpg", "jpeg"], key="resize")
+uploaded_resize_files = st.file_uploader("Glissez-déposez des images pour les redimensionner", accept_multiple_files=True, type=["png", "jpg", "jpeg", "webp"], key="resize")
 
 # Resizing Parameters Form
 with st.form(key="resize_form"):
     st.markdown('<div class="form-container">', unsafe_allow_html=True)
     resize_width = st.number_input("Largeur visée (optionnel)", min_value=1, step=1, value=1200)
     resize_height = st.number_input("Hauteur visée (optionnel)", min_value=1, step=1, value=1500)
-    resize_format = st.selectbox("Format de sortie", options=["JPEG", "PNG"], index=0, key="resize_format")
+    resize_format = st.selectbox("Format de sortie", options=["JPEG", "PNG", "WEBP"], index=0, key="resize_format")
     padding_color = st.color_picker("Couleur de remplissage des bords (par défaut gris #efefef)", value="#EFEFEF")
     resize_button = st.form_submit_button("Redimensionner les images")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -207,12 +222,15 @@ if resize_button:
     if uploaded_resize_files:
         with st.spinner("Redimensionnement des images..."):
             progress_bar = st.progress(0)
+            padding_color = tuple(int(padding_color.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
             output_zip = BytesIO()
             with zipfile.ZipFile(output_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_resize_files):
                     resized_image = resize_image(uploaded_file, resize_width, resize_height, resize_format, padding_color)
                     if resized_image:
-                        zipf.writestr(f"resized_{uploaded_file.name}", resized_image)
+                        filename_without_ext, _ = os.path.splitext(uploaded_file.name)
+                        output_name = f"resized_{filename_without_ext}.{resize_format.lower()}"
+                        zipf.writestr(output_name, resized_image)
                     
                     progress_bar.progress((idx + 1) / len(uploaded_resize_files))
             
