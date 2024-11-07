@@ -99,15 +99,12 @@ def process_image_with_photoroom(uploaded_file, api_params, output_format="jpeg"
         return None
 
 # Function to resize images and adjust file size
-from PIL import Image
-from io import BytesIO
-
-def resize_image(uploaded_file, target_width, target_height, output_format, padding_color=(255, 255, 255)):
+def resize_image(uploaded_file, target_width, target_height, output_format, padding_color=(255, 255, 255), reduction_factor=0.8):
     with Image.open(uploaded_file) as img:
         original_width, original_height = img.size
         ratio = min(target_width / original_width, target_height / original_height)
-        new_width = int(original_width * ratio)
-        new_height = int(original_height * ratio)
+        new_width = int(original_width * ratio * reduction_factor)
+        new_height = int(original_height * ratio * reduction_factor)
 
         # Resize the image while preserving aspect ratio
         resized_img = img.resize((new_width, new_height), Image.LANCZOS)
@@ -185,7 +182,7 @@ if process_button:
                         "background.color": background_color.lstrip("#"),
                         "export.format": export_format,
                         "outputSize": output_size,
-                        "padding": 0.1,
+                        "padding": 0.2,
                         "shadow.mode": "ai.soft",
                     }
                     success = False
@@ -226,7 +223,7 @@ if resize_button:
             output_zip = BytesIO()
             with zipfile.ZipFile(output_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_resize_files):
-                    resized_image = resize_image(uploaded_file, resize_width, resize_height, resize_format, padding_color)
+                    resized_image = resize_image(uploaded_file, resize_width, resize_height, resize_format, padding_color, reduction_factor=0.8)
                     if resized_image:
                         filename_without_ext, _ = os.path.splitext(uploaded_file.name)
                         output_name = f"resized_{filename_without_ext}.{resize_format.lower()}"
