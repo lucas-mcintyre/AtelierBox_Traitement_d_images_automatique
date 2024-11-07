@@ -99,12 +99,12 @@ def process_image_with_photoroom(uploaded_file, api_params, output_format="jpeg"
         return None
 
 # Function to resize images and adjust file size
-def resize_image(uploaded_file, target_width, target_height, output_format, padding_color=(255, 255, 255), reduction_factor=0.8):
+def resize_image(uploaded_file, target_width, target_height, output_format, padding_color, coeff_reduction):
     with Image.open(uploaded_file) as img:
         original_width, original_height = img.size
         ratio = min(target_width / original_width, target_height / original_height)
-        new_width = int(original_width * ratio * reduction_factor)
-        new_height = int(original_height * ratio * reduction_factor)
+        new_width = int(original_width * ratio * coeff_reduction)
+        new_height = int(original_height * ratio * coeff_reduction)
 
         # Resize the image while preserving aspect ratio
         resized_img = img.resize((new_width, new_height), Image.LANCZOS)
@@ -167,6 +167,7 @@ with st.form(key="process_form"):
     st.markdown('<div class="form-container">', unsafe_allow_html=True)
     output_size = st.text_input("Taille de sortie (e.g., 1200x1500)", value="1200x1500")
     export_format = st.selectbox("Format de sortie", options=["jpeg", "png", "jpg", "webp"], index=0)
+    padding = st.number_input("Réduction de l'objet - entre 0 (minuscule) et 1 (object prend toute la place), par défaut 0.5", min_value=0.1, max_value=1.0, step=0.05, value=0.5)
     background_color = st.color_picker("Couleur de fond (par défaut gris #efefef)", value="#EFEFEF")
     process_button = st.form_submit_button("Traiter les images")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -182,7 +183,7 @@ if process_button:
                         "background.color": background_color.lstrip("#"),
                         "export.format": export_format,
                         "outputSize": output_size,
-                        "padding": 0.2,
+                        "padding": (1 - padding) / 2,
                         "shadow.mode": "ai.soft",
                     }
                     success = False
@@ -211,6 +212,7 @@ with st.form(key="resize_form"):
     resize_width = st.number_input("Largeur visée (optionnel)", min_value=1, step=1, value=1200)
     resize_height = st.number_input("Hauteur visée (optionnel)", min_value=1, step=1, value=1500)
     resize_format = st.selectbox("Format de sortie", options=["JPEG", "PNG", "WEBP"], index=0, key="resize_format")
+    coeff_reduction = st.number_input("Facteur de réduction", min_value=0.1, max_value=1.0, step=0.1, value=0.8)
     padding_color = st.color_picker("Couleur de remplissage des bords (par défaut gris #efefef)", value="#EFEFEF")
     resize_button = st.form_submit_button("Redimensionner les images")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -223,7 +225,7 @@ if resize_button:
             output_zip = BytesIO()
             with zipfile.ZipFile(output_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_resize_files):
-                    resized_image = resize_image(uploaded_file, resize_width, resize_height, resize_format, padding_color, reduction_factor=0.8)
+                    resized_image = resize_image(uploaded_file, resize_width, resize_height, resize_format, padding_color, coeff_reduction)
                     if resized_image:
                         filename_without_ext, _ = os.path.splitext(uploaded_file.name)
                         output_name = f"resized_{filename_without_ext}.{resize_format.lower()}"
