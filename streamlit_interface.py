@@ -75,7 +75,7 @@ def process_image_with_photoroom(uploaded_file, api_params, output_format="jpeg"
 
         # Prepare output in the requested format (convert to webp if needed)
         img_byte_arr = BytesIO()
-        quality = 85  # Start with a high quality for file size adjustments
+        quality = 100  # Start with a high quality for file size adjustments
         step = -5  # Decrease in quality steps
         while True:
             img_byte_arr.seek(0)
@@ -121,7 +121,7 @@ def resize_image(uploaded_file, target_width, target_height, output_format, padd
 
         # Save with quality adjustments to fit within 70KB to 200KB range
         img_byte_arr = BytesIO()
-        quality = 85  # Start with high quality
+        quality = 100  # Start with high quality
         step = -5  # Step to decrease quality if file size is too large
         while True:
             img_byte_arr = BytesIO()
@@ -137,8 +137,6 @@ def resize_image(uploaded_file, target_width, target_height, output_format, padd
 
             # Use len() to get the actual file size with metadata
             file_size = len(img_byte_arr.getvalue()) / 1024  # Size in KB, including metadata
-            print(f"File size with metadata: {file_size} KB at quality {quality}")
-
 
             if file_size <= 200 or quality <= 5:
                 break
